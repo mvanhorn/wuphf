@@ -61,7 +61,9 @@ type Broker struct {
 	messages                []channelMessage
 	agentIssues             []agentIssueRecord
 	members                 []officeMember
-	memberIndex             map[string]int // slug → index into members; guarded by mu
+	memberIndex             map[string]int                  // slug → index into members; guarded by mu
+	memberPresence          map[string]memberPresenceRecord // slug → presence; guarded by mu, populated via brokerTransportHost
+	presenceKeyToSlug       map[string]string               // "adapter:key" → slug; guarded by mu
 	channels                []teamChannel
 	sessionMode             string
 	oneOnOneAgent           string
@@ -330,6 +332,8 @@ func NewBrokerAt(statePath string) *Broker {
 		entitySubscribers:   make(map[int]chan EntityBriefSynthesizedEvent),
 		factSubscribers:     make(map[int]chan EntityFactRecordedEvent),
 		agentStreams:        make(map[string]*agentStreamBuffer),
+		memberPresence:      make(map[string]memberPresenceRecord),
+		presenceKeyToSlug:   make(map[string]string),
 		rateLimitBuckets:    make(map[string]ipRateLimitBucket),
 		rateLimitWindow:     defaultRateLimitWindow,
 		rateLimitRequests:   defaultRateLimitRequestsPerWindow,
@@ -462,6 +466,7 @@ func (b *Broker) StartOnPort(port int) error {
 	mux.HandleFunc("/wiki/sections", b.requireAuth(b.handleWikiSections))
 	mux.HandleFunc("/wiki/lint/run", b.requireAuth(b.handleLintRun))
 	mux.HandleFunc("/wiki/lint/resolve", b.requireAuth(b.handleLintResolve))
+	mux.HandleFunc("/wiki/maintenance/suggest", b.requireAuth(b.handleWikiMaintenanceSuggest))
 	mux.HandleFunc("/wiki/extract/replay", b.requireAuth(b.handleWikiExtractReplay))
 	mux.HandleFunc("/wiki/dlq", b.requireAuth(b.handleWikiDLQ))
 	mux.HandleFunc("/wiki/compress", b.requireAuth(b.handleWikiCompress))
@@ -820,7 +825,7 @@ func (b *Broker) ExternalQueue(provider string) []channelMessage {
 			continue
 		}
 		b.externalDelivered[msg.ID] = struct{}{}
-		out = append(out, msg)
+		out = append(out, cloneChannelMessageForRead(msg))
 	}
 	return out
 }
@@ -940,7 +945,7 @@ func (b *Broker) PostInboundSurfaceMessage(from, channel, content, provider stri
 		Content:     strings.TrimSpace(content),
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 	}
-	b.appendMessageLocked(msg)
+	msg = b.appendMessageLocked(msg)
 	// Mark as already delivered so it doesn't bounce back to the same surface
 	if b.externalDelivered == nil {
 		b.externalDelivered = make(map[string]struct{})
@@ -975,6 +980,8 @@ func (b *Broker) Reset() {
 	b.scheduler = nil
 	b.pendingInterview = nil
 	b.activity = make(map[string]agentActivitySnapshot)
+	b.memberPresence = make(map[string]memberPresenceRecord)
+	b.presenceKeyToSlug = make(map[string]string)
 	b.counter = 0
 	b.notificationSince = ""
 	b.insightsSince = ""

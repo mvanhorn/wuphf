@@ -165,6 +165,7 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 	var firstTextAt time.Time
 	var firstToolAt time.Time
 	textStarted := false
+	turnID := newHeadlessTurnID()
 	result, parseErr := provider.ReadCodexJSONStream(teedStdout, func(event provider.CodexStreamEvent) {
 		if firstEventAt.IsZero() {
 			firstEventAt = time.Now()
@@ -181,6 +182,7 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 				l.updateHeadlessProgress(slug, "active", "text", "drafting response", metrics)
 			}
 			relay.OnText(event.Text)
+			emitHeadlessText(agentStream, turnID, HeadlessProviderCodex, slug, taskID, event.Text, event.RawType)
 		case "tool_use":
 			relay.Flush()
 			if firstToolAt.IsZero() {
@@ -190,10 +192,12 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 			line := fmt.Sprintf("tool_use: %s %s", event.ToolName, truncate(event.ToolInput, 120))
 			appendHeadlessCodexLog(slug, line)
 			l.updateHeadlessProgress(slug, "active", "tool_use", fmt.Sprintf("running %s", strings.TrimSpace(event.ToolName)), metrics)
+			emitHeadlessToolUse(agentStream, turnID, HeadlessProviderCodex, slug, taskID, event.ToolName, event.ToolInput, event.RawType)
 		case "tool_result":
 			line := "tool_result: " + truncate(event.Text, 140)
 			appendHeadlessCodexLog(slug, line)
 			l.updateHeadlessProgress(slug, "active", "tool_result", truncate(event.Text, 140), metrics)
+			emitHeadlessToolResult(agentStream, turnID, HeadlessProviderCodex, slug, taskID, event.ToolName, event.Text, event.RawType)
 		case "error":
 			appendHeadlessCodexLog(slug, "stream_error: "+event.Detail)
 			l.updateHeadlessProgress(slug, "error", "error", truncate(event.Detail, 180), metrics)
@@ -213,6 +217,7 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 			))
 			appendHeadlessCodexLog(slug, "stderr: "+detail)
 			l.updateHeadlessProgress(slug, "error", "error", truncate(detail, 180), metrics)
+			emitHeadlessTerminalWithTurn(agentStream, turnID, HeadlessProviderCodex, slug, taskID, "", detail, metrics, codexUsageToTokenUsage(result.Usage))
 			if isCodexAuthError(detail) && l.broker != nil {
 				sysTarget := target
 				if strings.TrimSpace(sysTarget) == "" {
@@ -232,11 +237,13 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 			durationMillis(startedAt, firstToolAt),
 			err.Error(),
 		))
+		emitHeadlessTerminalWithTurn(agentStream, turnID, HeadlessProviderCodex, slug, taskID, "", err.Error(), metrics, codexUsageToTokenUsage(result.Usage))
 		return err
 	}
 	if parseErr != nil {
 		metrics.TotalMs = time.Since(startedAt).Milliseconds()
 		l.updateHeadlessProgress(slug, "error", "error", truncate(parseErr.Error(), 180), metrics)
+		emitHeadlessTerminalWithTurn(agentStream, turnID, HeadlessProviderCodex, slug, taskID, "", parseErr.Error(), metrics, codexUsageToTokenUsage(result.Usage))
 		return parseErr
 	}
 	metrics.TotalMs = time.Since(startedAt).Milliseconds()
@@ -254,6 +261,7 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 		summary = "reply ready · " + summary
 	}
 	l.updateHeadlessProgress(slug, "idle", "idle", summary, metrics)
+	emitHeadlessTerminalWithTurn(agentStream, turnID, HeadlessProviderCodex, slug, taskID, summary, "", metrics, codexUsageToTokenUsage(result.Usage))
 	if l.broker != nil && (result.Usage.InputTokens != 0 || result.Usage.OutputTokens != 0 || result.Usage.CacheReadTokens != 0 || result.Usage.CacheCreationTokens != 0 || result.Usage.CostUSD != 0) {
 		l.broker.RecordAgentUsage(slug, config.ResolveCodexModel(l.cwd), result.Usage)
 	}
@@ -268,6 +276,16 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 		}
 	}
 	return nil
+}
+
+// codexUsageToTokenUsage adapts the Codex provider's ClaudeUsage record
+// (yes — Codex shares the ClaudeUsage envelope) into the runner-agnostic
+// shape HeadlessEvent expects.
+func codexUsageToTokenUsage(u provider.ClaudeUsage) *headlessTokenUsage {
+	if u.InputTokens == 0 && u.OutputTokens == 0 {
+		return nil
+	}
+	return &headlessTokenUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens}
 }
 
 func (l *Launcher) headlessCodexNeedsDangerousBypass(slug string) bool {
