@@ -45,7 +45,10 @@ const cloudflaredStopTimeout = 5 * time.Second
 // almost never fires for npm users; it shows up for `go install` users and
 // for npm users whose corp proxy blocked the github.com download. The
 // recovery hint covers both: reinstall from npm (refreshes the bundle), or
-// install cloudflared via the platform package manager.
+// cloudflaredMissingMessage returns a user-facing message explaining that the Cloudflare Tunnel binary
+// (`cloudflared`) is not available and providing platform-specific installation instructions and a
+// suggested fix (reinstalling wuphf or installing `cloudflared` manually). The message includes a
+// recommended command for macOS and Windows, or a link to installation instructions for other OSes.
 func cloudflaredMissingMessage() string {
 	var manual string
 	switch runtime.GOOS {
@@ -71,7 +74,9 @@ func cloudflaredMissingMessage() string {
 // because npm postinstall stages a SHA256-verified release into the same
 // directory as the wuphf binary, and a system-installed cloudflared on
 // PATH may be older / unsigned / config-clobbered. Returns the empty
-// string + non-nil error when neither location resolves.
+// findCloudflared locates the cloudflared executable on the host.
+// It prefers a sibling binary next to the currently running executable (resolving symlinks) and falls back to searching the PATH.
+// On Windows it expects `cloudflared.exe`. If no suitable executable is found, it returns an error.
 func findCloudflared() (string, error) {
 	binaryName := "cloudflared"
 	if runtime.GOOS == "windows" {
@@ -119,6 +124,9 @@ type webTunnelController struct {
 	broker    *team.Broker
 }
 
+// newWebTunnelController creates a new, empty webTunnelController.
+// The returned controller has all fields zeroed and must be configured
+// (for example, SetBroker) before calling start.
 func newWebTunnelController() *webTunnelController {
 	return &webTunnelController{}
 }
@@ -357,7 +365,8 @@ func (c *webTunnelController) mintInviteLocked(publicURL string) (string, string
 
 // tunnelJoinURL is the canonical "<public-base>/join/<token>" formatter.
 // Lives next to shareJoinURL so the join-path shape stays in one place even
-// though the host part comes from cloudflared instead of a network bind.
+// tunnelJoinURL formats a join URL using the tunnel's public origin and an invite token.
+// It trims any trailing slash from publicURL and appends "/join/<token>".
 func tunnelJoinURL(publicURL, token string) string {
 	return strings.TrimRight(publicURL, "/") + "/join/" + token
 }
@@ -416,7 +425,9 @@ func (c *webTunnelController) stop() error {
 // scanCloudflaredOutput reads cloudflared's stderr line by line, sends the
 // first matching public URL on urlCh, and on EOF (or scanner error) returns
 // the trailing lines on tailCh so callers can quote them in an error
-// message. Lines are kept short to bound memory.
+// scanCloudflaredOutput scans r for the first Cloudflare tunnel public URL and collects a rolling tail of recent lines.
+// It sends the first matched URL to urlCh and, when scanning completes, sends a slice of up to the last 8 lines to tailCh.
+// Both sends are non-blocking and may be dropped if the corresponding receiver is not ready.
 func scanCloudflaredOutput(r io.Reader, urlCh chan<- string, tailCh chan<- []string) {
 	const tailMax = 8
 	tail := make([]string, 0, tailMax)
@@ -448,7 +459,11 @@ func scanCloudflaredOutput(r io.Reader, urlCh chan<- string, tailCh chan<- []str
 }
 
 // waitForTunnelURL blocks until cloudflared publishes a URL, the context is
-// cancelled (subprocess died), or the timeout elapses.
+// waitForTunnelURL waits for the first tunnel URL sent on urlCh, returning it if received before the timeout or context cancellation.
+// 
+// On success it returns the tunnel URL, a nil tail slice, and a nil error. If urlCh is closed or yields an empty string, it returns
+// an error and the tail lines drained from tailCh. If the timeout elapses or ctx is cancelled before a URL is published, it
+// returns an error and the tail lines drained from tailCh.
 func waitForTunnelURL(ctx context.Context, urlCh <-chan string, tailCh <-chan []string, timeout time.Duration) (string, []string, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -465,6 +480,8 @@ func waitForTunnelURL(ctx context.Context, urlCh <-chan string, tailCh <-chan []
 	}
 }
 
+// drainTail reads a single tail slice from tailCh and returns it if received within 250ms.
+// If no slice arrives within that timeout, drainTail returns nil.
 func drainTail(tailCh <-chan []string) []string {
 	select {
 	case tail := <-tailCh:

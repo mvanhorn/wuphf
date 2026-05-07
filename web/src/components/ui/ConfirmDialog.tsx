@@ -35,7 +35,21 @@ export function confirm(opts: ConfirmOptions) {
   requestConfirm(opts);
 }
 
-/** Mount once near the root. */
+/**
+ * Hosts a global confirmation dialog and exposes an imperative API for showing confirmation prompts.
+ *
+ * Renders nothing when no confirmation is active. When active, displays a modal dialog with title,
+ * message, optional rich `details`, and Cancel/Confirm actions. While the confirm handler is
+ * executing the action buttons are disabled and the Confirm label shows a working state. The dialog
+ * closes when Cancel is clicked, when clicking outside the card, when Escape is pressed, or after
+ * the `onConfirm` callback completes. If `onConfirm` throws, the error is logged and the dialog is
+ * still closed.
+ *
+ * Mount this component once near the application root so the imperative `confirm(opts)` helper can
+ * dispatch dialogs.
+ *
+ * @returns The dialog element when a confirmation is active, otherwise `null`.
+ */
 export function ConfirmHost() {
   const [open, setOpen] = useState(false);
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);

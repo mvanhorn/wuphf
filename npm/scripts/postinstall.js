@@ -37,7 +37,12 @@ if (process.env.WUPHF_SKIP_POSTINSTALL === "1") {
 // so a soft failure here just defers the install hint to that moment.
 //
 // Skip via WUPHF_SKIP_CLOUDFLARED=1 for offline builds and air-gapped CI
-// images that prefer to ship without the bundled tunnel binary.
+/**
+ * Attempts to download and bundle the optional cloudflared tunnel binary as a best-effort step.
+ *
+ * If WUPHF_SKIP_CLOUDFLARED=1, writes a skip message to stderr and returns immediately.
+ * On failure, writes a non-fatal error message to stderr and allows installation to continue.
+ */
 async function tryDownloadCloudflared() {
   if (process.env.WUPHF_SKIP_CLOUDFLARED === "1") {
     process.stderr.write(

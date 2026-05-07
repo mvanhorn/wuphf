@@ -42,6 +42,11 @@ const MANIFEST_PATH = path.join(__dirname, "cloudflared.json");
 const RELEASE_BASE_URL =
   "https://github.com/cloudflare/cloudflared/releases/download";
 
+/**
+ * Load and parse the pinned cloudflared manifest from the package's manifest file.
+ *
+ * @returns {Object} The manifest object parsed from MANIFEST_PATH.
+ */
 function loadManifest() {
   const text = fs.readFileSync(MANIFEST_PATH, "utf8");
   return JSON.parse(text);
@@ -52,7 +57,12 @@ function loadManifest() {
 // Linux 386). For known-but-unpublished combinations like Windows ARM64 it
 // returns the key ("windows-arm64") so downloadCloudflared() can fall through
 // the "no manifest entry" branch — keeping the error surface in the Go
-// controller where cloudflared is actually required.
+/**
+ * Determine the manifest key for the current platform and architecture.
+ *
+ * Maps process.platform and process.arch to a Go-style "<os>-<arch>" key used by the manifest (for example, "linux-amd64" or "windows-arm64").
+ * @returns {string|null} The manifest key when the platform/architecture combination is recognized, or `null` if unsupported.
+ */
 function detectManifestKey() {
   const osMap = { darwin: "darwin", linux: "linux", win32: "windows" };
   const archMap = { x64: "amd64", arm64: "arm64" };
@@ -64,15 +74,29 @@ function detectManifestKey() {
 
 // Target filename inside npm/bin/. Lower-case "cloudflared" matches the
 // upstream binary's name; the .exe suffix is mandatory on Windows so
-// CreateProcess will launch it.
+/**
+ * Determine the expected installed cloudflared executable filename for the current platform.
+ * @return {string} `cloudflared.exe` on Windows, `cloudflared` on other platforms.
+ */
 function targetBinaryFilename() {
   return process.platform === "win32" ? "cloudflared.exe" : "cloudflared";
 }
 
+/**
+ * Get the filesystem path to the package's installed cloudflared binary.
+ * @returns {string} The absolute path to the target binary located in this package's `bin/` directory.
+ */
 function targetBinaryPath() {
   return path.join(__dirname, "..", "bin", targetBinaryFilename());
 }
 
+/**
+ * Download the resource at `url` and write its full response body to `dest`.
+ *
+ * @param {string} url - The URL to download.
+ * @param {string} dest - Filesystem path where the downloaded bytes will be written.
+ * @throws {Error} If the HTTP response has a non-ok status; the error message includes the status and URL.
+ */
 async function fetchToFile(url, dest) {
   const res = await fetch(url, { redirect: "follow" });
   if (!res.ok) {
@@ -84,6 +108,11 @@ async function fetchToFile(url, dest) {
   await fsp.writeFile(dest, buf);
 }
 
+/**
+ * Compute the SHA256 digest of a file and return it as a lowercase hex string.
+ * @param {string} filePath - Filesystem path to the input file.
+ * @returns {string} Lowercase hex-encoded SHA256 digest of the file's contents.
+ */
 async function sha256OfFile(filePath) {
   const hash = crypto.createHash("sha256");
   const stream = fs.createReadStream(filePath);
@@ -95,12 +124,37 @@ async function sha256OfFile(filePath) {
 
 // Extract the `cloudflared` binary from a goreleaser-style .tgz into tmpDir.
 // Cloudflared's macOS archives contain a single top-level `cloudflared`
-// file, so a bare `tar -xzf` is sufficient.
+/**
+ * Extracts a gzip-compressed tar archive into a target directory using the system `tar` command.
+ *
+ * Synchronously runs a system `tar -xzf` to unpack `archivePath` into `tmpDir`. Controls subprocess
+ * stdio: when `silent` is true the subprocess stdio is ignored; otherwise it inherits the parent
+ * stdio. Any underlying `tar` or exec error is propagated.
+ *
+ * @param {string} archivePath - Path to the `.tgz` archive to extract.
+ * @param {string} tmpDir - Destination directory where archive contents will be extracted.
+ * @param {boolean} silent - If true, suppresses `tar` output by ignoring subprocess stdio.
+ * @throws {Error} If invoking `tar` fails or the extraction process exits with a non-zero code.
+ */
 function extractTgz(archivePath, tmpDir, silent) {
   const stdio = silent ? "ignore" : "inherit";
   execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio });
 }
 
+/**
+ * Download and install the pinned cloudflared release for the current platform when a manifest entry exists.
+ *
+ * Attempts to download the asset referenced by the local `cloudflared.json` manifest, verifies its SHA256,
+ * and installs the resulting binary into this package's bin directory. Writes progress/error messages to
+ * stderr unless suppressed.
+ *
+ * @param {{ silent?: boolean }} [options] - Installation options.
+ * @param {boolean} [options.silent=false] - If `true`, suppresses runtime stderr messages.
+ * @returns {string|null} The filesystem path to the installed binary when installation occurred, or `null` if
+ *                        no bundled asset is available for the current platform/architecture.
+ * @throws {Error} If the downloaded asset's SHA256 does not match the expected hash (the downloaded file is deleted
+ *                 and installation is aborted).
+ */
 async function downloadCloudflared({ silent = false } = {}) {
   const manifestKey = detectManifestKey();
   if (!manifestKey) {

@@ -23,6 +23,12 @@ import {
 import { useAppStore } from "../../stores/app";
 import { confirm } from "../ui/ConfirmDialog";
 
+/**
+ * Format an optional timestamp into a localized "Mon D, HH:MM" date/time string.
+ *
+ * @param value - An optional date/time string (e.g., ISO 8601). If falsy, the function returns `"never"`. If the string cannot be parsed as a date, the original `value` is returned unchanged.
+ * @returns A localized date/time string formatted with short month, numeric day, and two-digit hour and minute (e.g., "May 7, 04:30"). Returns `"never"` for falsy input or the original input when the date is invalid.
+ */
 function formatSessionTime(value?: string): string {
   if (!value) return "never";
   const date = new Date(value);
@@ -90,6 +96,35 @@ function LoadingState({ children }: { children: string }) {
   );
 }
 
+/**
+ * Render a responsive grid of access and invite cards: current browser status, self-access instructions, team invite controls, and public tunnel invite controls.
+ *
+ * @param brokerConnected - True when the broker event stream is connected (affects status badge)
+ * @param humanLabel - Display label for the signed-in user
+ * @param inviteCopied - True while the team invite URL has recently been copied (controls Copy button state)
+ * @param isHost - Whether the current user is a host (gates host-only controls)
+ * @param selfAccess - Output of `selfAccessDetails(...)` containing UI text/code/footer for local access
+ * @param shareError - Optional error message for team-share operations
+ * @param shareInviteURL - Current team-share invite URL (empty when not available)
+ * @param shareMutationPending - True while a share start/stop mutation is in progress
+ * @param shareNetworkLabel - Human-readable network/interface label for the team share
+ * @param shareRunning - True when the team-share is currently running
+ * @param shareStatus - Optional detailed share status object
+ * @param tunnelInviteCopied - True while the tunnel invite URL has recently been copied (controls Copy button state)
+ * @param tunnelInviteURL - Current public-tunnel invite URL (empty when not available)
+ * @param tunnelError - Optional error message for tunnel operations
+ * @param tunnelMutationPending - True while a tunnel start/stop mutation is in progress
+ * @param tunnelRunning - True when the public tunnel is currently running
+ * @param tunnelStatus - Optional detailed tunnel status object
+ * @param onCopyInvite - Callback to copy the team-share invite URL to clipboard
+ * @param onCopyTunnelInvite - Callback to copy the tunnel invite URL to clipboard
+ * @param onStartShareInvite - Callback to start or create a team-share invite
+ * @param onStartTunnelInvite - Callback to start or create a public-tunnel invite
+ * @param onStopShareInvite - Callback to stop the team-share
+ * @param onStopTunnelInvite - Callback to stop the public tunnel
+ *
+ * @returns The React element containing the access/invite cards grid
+ */
 function AccessCards({
   brokerConnected,
   humanLabel,
@@ -278,6 +313,25 @@ function TeamInviteCard({
   );
 }
 
+/**
+ * Renders controls and status for creating and managing a one-use private-network invite.
+ *
+ * Conditionally shows create/stop buttons, the invite URL with a copy button, the shared
+ * network label, formatted expiration time when present, and any share error message.
+ *
+ * @param inviteCopied - Whether the invite URL was recently copied (affects copy button label)
+ * @param shareError - Optional error message related to share operations
+ * @param shareInviteURL - The current share invite URL to display and copy
+ * @param shareMutationPending - Whether a start/stop share mutation is in progress (disables actions)
+ * @param shareNetworkLabel - Human-readable network/interface label where sharing is active
+ * @param shareRunning - Whether a share invite is currently active
+ * @param shareStatus - Optional share status object containing metadata such as `expires_at`
+ * @param onCopyInvite - Callback invoked when the copy button is clicked
+ * @param onStartShareInvite - Callback invoked to create/start a share invite
+ * @param onStopShareInvite - Callback invoked to stop an active share invite
+ *
+ * @returns A React element containing buttons, invite URL display, network/expiry info, and error text
+ */
 function HostInviteControls({
   inviteCopied,
   shareError,
@@ -387,6 +441,24 @@ function HostInviteControls({
   );
 }
 
+/**
+ * Render the "Public tunnel invite" card and its host-gated controls.
+ *
+ * Renders a host-only message when `isHost` is false; when `isHost` is true,
+ * renders `HostTunnelControls` with the provided tunnel state and handlers.
+ *
+ * @param inviteCopied - Whether the invite URL was recently copied (controls copy button state)
+ * @param isHost - Whether the current user has host privileges (controls visibility)
+ * @param tunnelError - Optional error message related to tunnel operations
+ * @param tunnelInviteURL - The current invite URL to display and copy (empty if none)
+ * @param tunnelMutationPending - Whether a start/stop tunnel mutation is in progress
+ * @param tunnelRunning - Whether the tunnel is currently running
+ * @param tunnelStatus - Optional runtime status object for the running tunnel
+ * @param onCopyInvite - Callback to copy the invite URL to the clipboard
+ * @param onStartTunnelInvite - Callback to start or create a tunnel invite
+ * @param onStopTunnelInvite - Callback to stop the running tunnel
+ * @returns The Public tunnel invite card element
+ */
 function TunnelInviteCard({
   inviteCopied,
   isHost,
@@ -434,6 +506,23 @@ function TunnelInviteCard({
   );
 }
 
+/**
+ * Render controls and status for creating, copying, and stopping a public tunnel invite.
+ *
+ * Renders action buttons for starting or stopping the tunnel, displays the current invite URL
+ * with a copy button, and shows running tunnel details (public URL and expiration) or an error.
+ *
+ * @param inviteCopied - Whether the invite URL was recently copied (affects the copy button label).
+ * @param tunnelError - Optional error message related to tunnel operations to display to the user.
+ * @param tunnelInviteURL - The invite URL to display and copy when available.
+ * @param tunnelMutationPending - Whether a start/stop mutation is in progress (disables buttons).
+ * @param tunnelRunning - Whether the tunnel is currently running (controls available actions and info).
+ * @param tunnelStatus - Optional tunnel status object containing runtime details such as `public_url` and `expires_at`.
+ * @param onCopyInvite - Callback invoked when the user clicks the copy button.
+ * @param onStartTunnelInvite - Callback invoked to start the tunnel or create a new invite.
+ * @param onStopTunnelInvite - Callback invoked to stop the running tunnel.
+ * @returns A React element containing the tunnel invite controls and status display.
+ */
 function HostTunnelControls({
   inviteCopied,
   tunnelError,
@@ -546,6 +635,13 @@ function HostTunnelControls({
   );
 }
 
+/**
+ * Render a broker status card showing a connectivity indicator and an uppercase status badge.
+ *
+ * @param isHealthy - Whether the broker is considered healthy; controls the indicator color and badge styling
+ * @param status - The broker status label to display (will be uppercased)
+ * @returns A JSX element containing the status dot, title "Broker Status", and a styled status badge
+ */
 function BrokerStatusCard({
   isHealthy,
   status,
@@ -736,6 +832,12 @@ function humanDisplayName(human: HumanMe["human"] | undefined): string {
   return human?.display_name || human?.human_slug || human?.slug || "Host";
 }
 
+/**
+ * Builds runtime status items from a health response for display in the UI.
+ *
+ * @param data - The health response (may be `undefined`); fields from this object are used to derive item values and active flags.
+ * @returns An array of `RuntimeItem` objects for "Session", "Provider", "Memory", "Nex", and "Build". Each item contains a human-readable `value` (with sensible fallbacks like `"unknown"`, `"none"`, or `"disconnected"`) and an `active` boolean indicating the presence/availability of that subsystem.
+ */
 function runtimeItems(data: HealthResponse | undefined): RuntimeItem[] {
   const providerLabel = [data?.provider, data?.provider_model]
     .filter(Boolean)
@@ -779,7 +881,24 @@ function runtimeItems(data: HealthResponse | undefined): RuntimeItem[] {
 // clipboard, the disclaimer modal trigger). Lifted out of HealthCheckApp so
 // that component stays under biome's 200-line per-function lint, and so the
 // share-invite vs tunnel-invite paths read as parallel chunks instead of one
-// 250-line function.
+/**
+ * Manage the public-tunnel lifecycle, polling, and user-facing controls for the HealthCheck UI.
+ *
+ * When `isHost` is true this hook polls tunnel status, exposes start/stop mutations, and provides
+ * clipboard-copy handling and transient UI state (copied flag and mutation errors).
+ *
+ * @param isHost - Whether the current user is the host; when false, tunnel polling and mutations are disabled.
+ * @returns An object with tunnel state and control handlers:
+ *  - `tunnelStatus` — the latest tunnel status object from the server (or `undefined`).
+ *  - `tunnelRunning` — `true` when a tunnel is currently running, `false` otherwise.
+ *  - `tunnelInviteURL` — the current invite URL when running, otherwise an empty string.
+ *  - `tunnelInviteCopied` — transient boolean set to `true` briefly after a successful copy.
+ *  - `tunnelMutationPending` — `true` while a start/stop mutation is in flight.
+ *  - `tunnelError` — a string describing the current tunnel or mutation error, or empty string.
+ *  - `startTunnelInvite()` — initiates creating a tunnel invite (prompts confirmation when creating a new tunnel).
+ *  - `stopTunnelInvite()` — stops the running tunnel (no-op when a mutation is pending).
+ *  - `copyTunnelInvite()` — copies the invite URL to the clipboard (no-op if URL or navigator is unavailable).
+ */
 function useTunnelControls(isHost: boolean) {
   const queryClient = useQueryClient();
   const [tunnelInviteCopied, setTunnelInviteCopied] = useState(false);
@@ -892,6 +1011,13 @@ function useTunnelControls(isHost: boolean) {
   };
 }
 
+/**
+ * Render the Health & Access page, presenting controls and status for sharing, tunneling, broker connectivity, team sessions, and runtime.
+ *
+ * Exposes UI for creating/stopping private-network invites and public tunnels, copying invite URLs, viewing broker and runtime health, and revoking team-member sessions. The component composes query-backed state and mutation handlers and passes them to child controls.
+ *
+ * @returns A React element that renders the health/access UI with controls for creating and stopping invites, copying invite URLs, viewing broker and runtime status, and managing team sessions.
+ */
 export function HealthCheckApp() {
   const queryClient = useQueryClient();
   const [inviteCopied, setInviteCopied] = useState(false);

@@ -679,6 +679,15 @@ func runTeam(args []string, packSlug string, unsafe bool, oneOnOne bool, opusCEO
 	}
 }
 
+// runWeb launches the web UI for the specified pack and configures runtime
+// options, sharing and tunneling controllers, and broker integrations.
+//
+// It applies the provided flags (unsafe, opusCEO, focus/collab mode, noOpen) to
+// the launcher, starts a signal handler that stops share/tunnel subprocesses on
+// SIGINT/SIGTERM, runs launcher preflight checks, wires the web share and web
+// tunnel controllers into any broker produced by the launcher, prints a launch
+// message, and starts the web view. On launcher creation, preflight or launch
+// failure the function prints the error to stderr and exits with status 1.
 func runWeb(args []string, packSlug string, unsafe bool, webPort int, opusCEO bool, collabMode bool, noOpen bool) {
 	l, err := team.NewLauncher(packSlug)
 	if err != nil {

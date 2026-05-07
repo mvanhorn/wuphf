@@ -114,6 +114,11 @@ export function startShare() {
   return post<WebShareStatus>("/share/start", {});
 }
 
+/**
+ * Stops an active web share session.
+ *
+ * @returns The updated WebShareStatus describing whether the share is running and any related metadata (bind, invite_url, expires_at, error).
+ */
 export function stopShare() {
   return post<WebShareStatus>("/share/stop", {});
 }
@@ -135,18 +140,38 @@ export interface WebTunnelStatus {
   cloudflared_missing?: boolean;
 }
 
+/**
+ * Fetches the current web tunnel status from the platform.
+ *
+ * @returns The `WebTunnelStatus` object describing whether the tunnel is running and, when available, `public_url`, `invite_url`, `expires_at`, `error`, and the optional `cloudflared_missing` flag.
+ */
 export function getTunnelStatus() {
   return get<WebTunnelStatus>("/share/tunnel/status");
 }
 
+/**
+ * Starts a web tunnel for sharing and returns its runtime status.
+ *
+ * @returns The tunnel status including `running`, optional `public_url`, `invite_url`, `expires_at`, `error`, and optional `cloudflared_missing`.
+ */
 export function startTunnel() {
   return post<WebTunnelStatus>("/share/tunnel/start", {});
 }
 
+/**
+ * Stop the running web tunnel used for sharing.
+ *
+ * @returns The current tunnel status as a `WebTunnelStatus` object
+ */
 export function stopTunnel() {
   return post<WebTunnelStatus>("/share/tunnel/stop", {});
 }
 
+/**
+ * Retrieves server build and version metadata.
+ *
+ * @returns The server's version information, containing `version` and `build_timestamp`.
+ */
 export function getVersion() {
   return get<VersionInfo>("/version");
 }
