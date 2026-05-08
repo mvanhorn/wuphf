@@ -460,7 +460,7 @@ func scanCloudflaredOutput(r io.Reader, urlCh chan<- string, tailCh chan<- []str
 
 // waitForTunnelURL blocks until cloudflared publishes a URL, the context is
 // waitForTunnelURL waits for the first tunnel URL sent on urlCh, returning it if received before the timeout or context cancellation.
-// 
+//
 // On success it returns the tunnel URL, a nil tail slice, and a nil error. If urlCh is closed or yields an empty string, it returns
 // an error and the tail lines drained from tailCh. If the timeout elapses or ctx is cancelled before a URL is published, it
 // returns an error and the tail lines drained from tailCh.
